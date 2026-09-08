@@ -8,11 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
-- **BREAKING**: The Rust MCP server (`src/`, `Cargo.toml`, CI workflows, `commands/cc/`) is gone. The council pattern now ships as a single Claude Code skill in `skills/council/SKILL.md` (#3). The server remains available at the `rust-legacy` and `v0.2.0` tags.
+- **BREAKING**: The Rust MCP server (`src/`, `Cargo.toml`, CI workflows, `commands/cc/`) is gone. The council pattern now ships as a single skill in `skills/council/SKILL.md` (#3). The server remains available at the `rust-legacy` and `v0.2.0` tags.
+- The claudy MCP server dependency: councilors are reached through their own CLIs.
+
+### Changed
+
+- Dispatch channels are direct headless, read-only CLI invocations (`claude -p`, `codex exec`, `agy -p`, `grok -p`), so the skill runs on any agent host with a shell.
 
 ### Added
 
 - OSS community files: CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, issue and pull request templates.
+- Plugin packaging for Claude Code, Codex, Antigravity (agy), and Grok; install via each host's plugin manager (e.g. `claude plugin marketplace add epicsagas/mcp-council`).
 
 ## [0.2.0] - 2026-09-08
 

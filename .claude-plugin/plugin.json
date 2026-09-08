@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "council",
+  "version": "0.3.0",
+  "description": "Multi-model council: independent answers, anonymized peer review, chairman synthesis",
+  "author": {
+    "name": "epicsagas",
+    "url": "https://github.com/epicsagas"
+  },
+  "homepage": "https://github.com/epicsagas/mcp-council",
+  "repository": "https://github.com/epicsagas/mcp-council",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude-code",
+    "llm",
+    "multi-agent",
+    "council",
+    "peer-review"
+  ],
+  "skills": "./skills/"
+}
