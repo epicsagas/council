@@ -59,7 +59,7 @@ Build the label map in memory: surviving answers become `Response A`, `Response 
 
 ### 3. Stage 2 — Peer review (self-exclusion)
 
-For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive.
+For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive. Each Stage 2 dispatch must open a fresh session (claudy `ask_agent`); never reuse a Stage 1 session via `send_message`, or the reviewer could see its own Stage 1 answer and self-exclusion is defeated.
 
 ```
 You are evaluating different responses to the following question:
