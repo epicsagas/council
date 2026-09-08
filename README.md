@@ -1,236 +1,73 @@
-# LLM Council Automation System
+# Council
 
-[![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
-[![MCP](https://img.shields.io/badge/protocol-MCP-6E5FF5.svg)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Crates.io](https://img.shields.io/crates/v/mcp-council.svg)](https://crates.io/crates/mcp-council)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
 
-**Multi-Model Reasoning → Peer Review → Final Synthesis (Rust MCP Server)**
+**Multi-model council: independent answers, anonymized peer review, chairman synthesis.**
 
-A Rust-based MCP server that enables AI model collaboration through structured peer review. The system implements a 3-stage deliberation process where multiple LLMs collaboratively answer questions with anonymized peer review to prevent bias.
+A single Claude Code skill. Three model families (claude, codex, agy/Gemini) answer the same question independently, review each other anonymously with self-exclusion, and a chairman synthesizes the final answer. Inspired by [karpathy/llm-council](https://github.com/karpathy/llm-council).
 
-> Inspired by the workflow concept of **karpathy/llm-council**. Primary interface is **Cursor Chat** or **Claude Code** through MCP tools and slash commands.
+This project started as a Rust MCP server plus Cursor chat commands. Modern agents made that plumbing redundant: agents read and write files natively, spawn subagents in parallel, and reach external CLIs (codex, agy) through MCP. The whole system is now one skill file. The original Rust implementation is preserved at the `rust-legacy` and `v0.2.0` tags.
 
----
+## The pattern
 
-## Overview (3 Stages)
-
-1) **Stage1 — First Opinions**: One prompt in Cursor with multiple selected models or single models → each model writes its answer to `~/.council/<slug>/*-answer.md`.
-2) **Stage2 — Peer Review**: 
-   - Run `/peer_review <slug> by <model>` to generate a review prompt (excludes the model's own response)
-   - The model generates the review content
-   - **Optional**: If the model doesn't automatically save the review, use `/save_review <slug> <model> <content>` as a fallback to manually save to `peer-review-by-<model>.md`
-3) **Stage3 — Final Answer**: From a (single) model tab, run `/finalize <slug> by <model>` to synthesize all responses and reviews into `final-answer-by-<model>.md`.
-
----
-
-## How It Fits Together (Chat Commands → MCP Server)
-
-```
-[Chat Commands (Cursor/Claude Code)]
-  ├─ /first_answer {slug} "prompt"      -> Stage1 capture (multi-model answers)
-  ├─ /summarize <slug> <model> <content> -> tools.council.summarize (Optional: reduce token costs)
-  ├─ /save_summary <slug> <model> <content> -> tools.council.save_summary (Save summary)
-  ├─ /peer_review <slug> by <model>     -> tools.council.peer_review (Stage2, self-exclusion)
-  ├─ /save_review <slug> <model> <content> -> tools.council.save_review (Save peer review)
-  └─ /finalize <slug> by <model>       -> tools.council.finalize (Stage3 synthesis)
-                     ▼
-[Rust MCP Server: mcp-council]
-  Exposes tools.council.{first_answer,peer_review,save_review,finalize,summarize,save_summary}
-                     ▼
-[Current AI Model Context]
-  Direct processing without external CLI calls
+```mermaid
+flowchart TD
+    Q["Question"] --> S1["Stage 1: Independent answers<br/>claude + codex + agy, parallel,<br/>no cross-visibility"]
+    S1 --> A["anonymized responses<br/>A / B / C"]
+    A --> S2["Stage 2: Peer review<br/>each councilor reviews the others,<br/>own answer excluded,<br/>FINAL RANKING"]
+    S2 --> S3["Stage 3: Chairman synthesis<br/>answers + rankings +<br/>agreements and disagreements"]
+    S3 --> F["final-answer.md"]
 ```
 
----
+Why it works:
 
-## Key Paths
+- **Independence**: Stage 1 councilors never see each other's answers, so answers are genuinely independent.
+- **Anonymization**: reviewers see only `Response A/B/C`, so rankings judge content, not brand.
+- **Self-exclusion**: a councilor never reviews its own answer (no self-serving bias).
+- **Chairman synthesis**: one final answer that weighs insights, rankings, and disagreement patterns instead of picking a winner.
 
-```
-mcp-council/          # Rust MCP server source
-  ├─ src/
-  ├─ Cargo.toml
-  └─ QUICKSTART.md
-.cursor/commands/cc/  # Chat-triggered commands (Stage1/2/3)
-~/.council/{slug}/    # Outputs (answers, peer reviews, final synthesis)
-```
+## Install
 
-Outputs example:
+Copy the skill into your Claude Code skills directory:
 
-```
-.council/your-project-slug/
-  ├─ gpt-5-answer.md
-  ├─ sonnet-answer.md
-  ├─ gemini-answer.md
-  ├─ summary.md                    # Optional: summary for large documents
-  ├─ peer-review-by-sonnet.md
-  └─ final-answer-by-sonnet.md
+```bash
+git clone <this repo>
+mkdir -p ~/.claude/skills
+cp -r <this repo>/skills/council ~/.claude/skills/
 ```
 
----
+Requires the claudy MCP server for the codex and agy councilors (a local-only claude fallback applies automatically when they are unavailable).
 
-## Chat Commands (Universal for Cursor/Claude Code)
+## Usage
 
-- **Stage1 (collect answers)**
-  `/first_answer your-project-slug "Your Project Prompt"`
-- **Stage2 (peer review, with self-exclusion)**
-  ```
-  /peer_review your-project-slug by gpt-5.2
-  ```
-  - Automatically excludes the specified model's own response
-  - Returns structured prompt for current model to process
-  - The model generates the review content
-  - Some models may automatically save the review file; if not, use the fallback below
-  
-  **Fallback: Manual save (if needed)**
-  ```
-  /save_review your-project-slug glm-4.6 "Review content..."
-  ```
-  - Use this only if the model didn't automatically save the review
-  - Saves peer review to `peer-review-by-glm-4.6.md`
-  - Stores in `~/.council/<slug>/` directory
+```
+/council Should we split the auth service out of the monolith?
+/council Compare WAL vs journal-mode tradeoffs for our write-heavy workload
+```
 
-- **Stage3 (final synthesis)**
-  ```
-  /finalize your-project-slug by claude
-  ```
-  - Synthesizes all responses and reviews
-  - Uses `by <model>` format to specify the synthesizing model
+The skill runs all three stages and replies with the chairman's verdict plus the artifact paths.
 
-- **Optional: Summarize large documents (reduce token costs)**
-  ```
-  /summarize your-project-slug sonnet "Very long document..." max_length=2000
-  ```
-  - Generates a summary prompt for large documents
-  - After model generates summary, save it:
-  ```
-  /save_summary your-project-slug sonnet "Summary content..."
-  ```
-  - Saves to `summary.md` for use in Stage2/Stage3 to reduce token costs
+## Artifacts
 
-**File Structure**:
+Each run writes to `.council/<slug>/` in the current project (gitignored):
 
 ```
 .council/<slug>/
-├── <model>-answer.md
-├── summary.md                    # Optional: for large documents
-├── peer-review-by-<model>.md
-└── final-answer-by-<model>.md
+  claude-answer.md
+  codex-answer.md
+  agy-answer.md
+  peer-review-by-claude.md
+  peer-review-by-codex.md
+  peer-review-by-agy.md
+  final-answer.md
+  run-log.md            # failures and degraded-mode notes
 ```
 
----
+## Degradation
 
-## Install & Wire Up
-
-### Option 1: Install from crates.io (Recommended)
-
-```bash
-# Install binary
-cargo install mcp-council
-
-# Install slash commands (interactive - prompts for subfolder name)
-mcp-council --init          # Both Cursor and Claude Code
-mcp-council --init-cursor   # Cursor only
-mcp-council --init-claude   # Claude Code only
-
-# Example interaction:
-# $ mcp-council --init
-# Enter subfolder name (leave empty for default 'cc'): council
-# -> Installs to ~/.cursor/commands/council/ and ~/.claude/commands/council/
-```
-
-Add to your MCP config (`~/.cursor/mcp.json` for Cursor, `~/.claude.json` for Claude Code):
-
-```json
-{
-  "mcpServers": {
-    "mcp-council": {
-      "command": "mcp-council",
-      "args": []
-    }
-  }
-}
-```
-
-Done! Now you can use `/first_answer`, `/peer_review`, `/finalize` commands.
-
-
-### Option 2: Build from source
-
-```bash
-git clone https://github.com/epicsagas/mcp-council.git
-cd mcp-council
-cargo build --release
-cp target/release/mcp-council ~/.local/bin/
-```
-
-### Register MCP in Cursor (`~/.cursor/mcp.json`)
-
-```json
-{
-  "servers": {
-    "mcp-council": {
-      "command": "mcp-council",
-      "args": []
-    }
-  }
-}
-```
-
-### Install chat commands
-
-```bash
-# Ensure council root exists (home-scoped)
-mkdir -p ~/.council
-
-# For Cursor
-mkdir -p ~/.cursor/commands/cc
-cp mcp-council/commands/cc/* ~/.cursor/commands/cc/
-
-# For Claude Code (per-project)
-mkdir -p .cursor/commands/cc
-cp mcp-council/commands/cc/* .cursor/commands/cc/
-
-# Or globally for Claude Code
-mkdir -p ~/.claude/commands/cc
-cp mcp-council/commands/cc/* ~/.claude/commands/cc/
-```
-
-For a full walkthrough, see [QUICKSTART.md](QUICKSTART.md).
-
----
-
-## Key Features
-
-- **Self-Exclusion**: Each model automatically excludes its own response from peer review
-- **Default Location**: Uses `~/.council/{slug}` for storage by default
-- **Universal Compatibility**: Works with both Cursor and Claude Code
-- **No External Dependencies**: Direct processing within current AI context
-- **Anonymized Review**: Models evaluate responses without knowing which model wrote them
-- **Token Cost Optimization**: Optional `summarize` tool to reduce token costs for large documents in Stage2/Stage3
-
-## Technical Notes
-
-- **MCP Protocol**: JSON-RPC 2.0 compliant server, built on the [`llm-kernel`](https://crates.io/crates/llm-kernel) MCP stack (requires Rust 1.92+, edition 2024)
-- **Server-Side Completions (optional)**: `council.finalize`-style flows stay host-driven by default, but the binary exposes a server-side completion API (`complete_with`) for direct HTTP calls. Engines: `claude[:<model>]` (uses `ANTHROPIC_API_KEY`), any llm-kernel catalog provider or model id such as `gemini`, `zai`/`glm-5`, `deepseek` (keys via the provider's `<PROVIDER>_API_KEY` env var), and `cursor-agent`/`codex` via installed CLIs. API keys are only ever read from the environment, never stored. Responses are secret-masked and ANSI-stripped
-- **Token Budget**: `mcp-council --max-tokens <N>` pre-arms a process-wide budget that gates server-side completions (`complete_with`, library API). The shipped council tools are host-driven and consume no budget; an exhausted budget fails fast with a clear error
-- **Async Rust**: Non-blocking I/O operations
-- **Error Handling**: Comprehensive error propagation and context
-- **File Discovery**: Intelligent `.council/` directory search up to 10 parent levels
-- **Model Support**: Extensible for any LLM with proper naming conventions
+Failed backends are dropped and logged. Two survivors still run the full flow. One survivor skips peer review; the chairman critically reviews the single answer before synthesizing. Zero survivors aborts with the backend errors.
 
 ## License
 
-**[Apache-2.0](LICENSE)**
-
----
-
-## Acknowledgements
-
-- Model Context Protocol (MCP)
-- Anthropic Claude
-- Google Gemini
-- OpenAI GPT Models
-- Cursor IDE Integration
-- Claude Code Integration
+Apache 2.0. See [LICENSE](LICENSE).

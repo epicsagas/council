@@ -97,3 +97,6 @@ $RECYCLE.BIN/
 
 # Local History (VS Code extension)
 .history/
+
+# Council deliberation artifacts
+.council/
