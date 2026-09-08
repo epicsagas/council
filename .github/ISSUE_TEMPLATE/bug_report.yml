@@ -1,0 +1,25 @@
+name: Bug report
+description: The council misbehaved (broken ranking, leaked identity, lost artifacts)
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the relevant excerpt from `.council/<slug>/run-log.md` and the stage where it broke.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The `/council <question>` invocation and any councilor backends that failed.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Claude Code version, OS, claudy MCP availability.
+    validations:
+      required: true

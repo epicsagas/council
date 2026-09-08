@@ -1,7 +1,10 @@
 # Council
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
+[![Stars](https://img.shields.io/github/stars/epicsagas/mcp-council?style=flat-square&color=ffd700&logo=github)](https://github.com/epicsagas/mcp-council/stargazers)
+[![Issues](https://img.shields.io/github/issues/epicsagas/mcp-council?style=flat-square&color=ff6b6b&logo=github)](https://github.com/epicsagas/mcp-council/issues)
+[![Last commit](https://img.shields.io/github/last-commit/epicsagas/mcp-council?style=flat-square&color=58a6ff&logo=git)](https://github.com/epicsagas/mcp-council/commits/main)
+[![License](https://img.shields.io/badge/license-Apache--2.0-3fb950?style=flat-square)](LICENSE)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
 
 **Multi-model council: independent answers, anonymized peer review, chairman synthesis.**
 
@@ -22,22 +25,24 @@ flowchart TD
 
 Why it works:
 
-- **Independence**: Stage 1 councilors never see each other's answers, so answers are genuinely independent.
-- **Anonymization**: reviewers see only `Response A/B/C`, so rankings judge content, not brand.
-- **Self-exclusion**: a councilor never reviews its own answer (no self-serving bias).
-- **Chairman synthesis**: one final answer that weighs insights, rankings, and disagreement patterns instead of picking a winner.
+| | Property | Why it matters |
+|--|---------|----------------|
+| 🧭 | Independence | Stage 1 councilors never see each other's answers, so answers are genuinely independent |
+| 🎭 | Anonymization | Reviewers see only `Response A/B/C`, so rankings judge content, not brand |
+| 🚫 | Self-exclusion | A councilor never reviews its own answer, removing self-serving bias |
+| ⚖️ | Chairman synthesis | One final answer weighs insights, rankings, and disagreement patterns instead of picking a winner |
 
 ## Install
 
 Copy the skill into your Claude Code skills directory:
 
 ```bash
-git clone <this repo>
+git clone https://github.com/epicsagas/mcp-council
 mkdir -p ~/.claude/skills
-cp -r <this repo>/skills/council ~/.claude/skills/
+cp -r mcp-council/skills/council ~/.claude/skills/
 ```
 
-Requires the claudy MCP server for the codex and agy councilors (a local-only claude fallback applies automatically when they are unavailable).
+Requirements: Claude Code. The claudy MCP server adds the codex and agy councilors; a local-only claude fallback applies automatically when they are unavailable.
 
 ## Usage
 
@@ -67,6 +72,10 @@ Each run writes to `.council/<slug>/` in the current project (gitignored):
 ## Degradation
 
 Failed backends are dropped and logged. Two survivors still run the full flow. One survivor skips peer review; the chairman critically reviews the single answer before synthesizing. Zero survivors aborts with the backend errors.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome.
 
 ## License
 
