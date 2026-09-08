@@ -34,13 +34,33 @@ Why it works:
 
 ## Install
 
-| Host | Install |
-|---|---|
-| Claude Code | `claude plugin marketplace add epicsagas/mcp-council`, then `claude plugin install council` |
-| Codex | `codex plugin marketplace add epicsagas/mcp-council`, then `codex plugin add council` |
-| Antigravity (agy) | `agy plugin install https://github.com/epicsagas/mcp-council` |
-| Grok | `grok plugin install epicsagas/mcp-council --trust` |
-| Any host (manual) | copy `skills/council/` into the host's skills directory |
+Claude Code:
+
+```bash
+claude plugin marketplace add epicsagas/mcp-council
+claude plugin install council
+```
+
+Codex:
+
+```bash
+codex plugin marketplace add epicsagas/mcp-council
+codex plugin add council
+```
+
+Antigravity (agy):
+
+```bash
+agy plugin install https://github.com/epicsagas/mcp-council
+```
+
+Grok:
+
+```bash
+grok plugin install epicsagas/mcp-council --trust
+```
+
+Any other host: copy `skills/council/` into the host's skills directory.
 
 Requirements: the councilor CLIs on PATH (`claude`, `codex`, `agy`, `grok`). Each councilor drops out independently when its CLI is missing or quota-limited. No MCP server is required.
 
