@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - OSS community files: CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, issue and pull request templates.
+- Claude Code plugin manifests: install via `claude plugin marketplace add epicsagas/mcp-council` and `claude plugin install council`.
 
 ## [0.2.0] - 2026-09-08
 

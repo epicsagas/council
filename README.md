@@ -34,7 +34,14 @@ Why it works:
 
 ## Install
 
-Copy the skill into your Claude Code skills directory:
+Install as a Claude Code plugin:
+
+```bash
+claude plugin marketplace add epicsagas/mcp-council
+claude plugin install council
+```
+
+Or copy the skill manually:
 
 ```bash
 git clone https://github.com/epicsagas/mcp-council
