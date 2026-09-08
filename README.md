@@ -8,7 +8,7 @@
 
 **Multi-model council: independent answers, anonymized peer review, chairman synthesis.**
 
-A single Claude Code skill. Three model families (claude, codex, agy/Gemini) answer the same question independently, review each other anonymously with self-exclusion, and a chairman synthesizes the final answer. Inspired by [karpathy/llm-council](https://github.com/karpathy/llm-council).
+A single Claude Code skill. Four model families (claude, codex, agy/Gemini, grok) answer the same question independently, review each other anonymously with self-exclusion, and a chairman synthesizes the final answer. Inspired by [karpathy/llm-council](https://github.com/karpathy/llm-council).
 
 This project started as a Rust MCP server plus Cursor chat commands. Modern agents made that plumbing redundant: agents read and write files natively, spawn subagents in parallel, and reach external CLIs (codex, agy) through MCP. The whole system is now one skill file. The original Rust implementation is preserved at the `rust-legacy` and `v0.2.0` tags.
 
@@ -16,7 +16,7 @@ This project started as a Rust MCP server plus Cursor chat commands. Modern agen
 
 ```mermaid
 flowchart TD
-    Q["Question"] --> S1["Stage 1: Independent answers<br/>claude + codex + agy, parallel,<br/>no cross-visibility"]
+    Q["Question"] --> S1["Stage 1: Independent answers<br/>claude + codex + agy + grok, parallel,<br/>no cross-visibility"]
     S1 --> A["anonymized responses<br/>A / B / C"]
     A --> S2["Stage 2: Peer review<br/>each councilor reviews the others,<br/>own answer excluded,<br/>FINAL RANKING"]
     S2 --> S3["Stage 3: Chairman synthesis<br/>answers + rankings +<br/>agreements and disagreements"]
@@ -42,7 +42,7 @@ mkdir -p ~/.claude/skills
 cp -r mcp-council/skills/council ~/.claude/skills/
 ```
 
-Requirements: Claude Code. The claudy MCP server adds the codex and agy councilors; a local-only claude fallback applies automatically when they are unavailable.
+Requirements: Claude Code. The claudy MCP server adds the codex and agy councilors and a grok CLI install adds grok; a local-only claude fallback applies automatically when the others are unavailable.
 
 ## Usage
 
@@ -62,9 +62,11 @@ Each run writes to `.council/<slug>/` in the current project (gitignored):
   claude-answer.md
   codex-answer.md
   agy-answer.md
+  grok-answer.md
   peer-review-by-claude.md
   peer-review-by-codex.md
   peer-review-by-agy.md
+  peer-review-by-grok.md
   final-answer.md
   run-log.md            # failures and degraded-mode notes
 ```

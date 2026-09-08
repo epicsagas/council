@@ -1,6 +1,6 @@
 ---
 name: council
-description: Multi-model council (claude + codex + agy). Independent answers, anonymized cross peer-review with self-exclusion, then chairman synthesis. Use for architecture decisions, contested technical questions, and high-stakes judgments where a genuinely independent second opinion matters. Invoke as "/council <question>".
+description: Multi-model council (claude + codex + agy + grok). Independent answers, anonymized cross peer-review with self-exclusion, then chairman synthesis. Use for architecture decisions, contested technical questions, and high-stakes judgments where a genuinely independent second opinion matters. Invoke as "/council <question>".
 ---
 
 # Council
@@ -16,6 +16,7 @@ Default councilors, dispatched in parallel from a single message:
 | claude | Agent tool, subagent `general-purpose` |
 | codex | `mcp__claudy__ask_agent` with `agent: "codex"` |
 | agy (Gemini) | `mcp__claudy__ask_agent` with `agent: "agy"` |
+| grok | Bash: `grok --permission-mode plan -p "<prompt>"` (single-turn, reply on stdout) |
 
 If the user names a panel, use theirs. Otherwise use the default three.
 
@@ -59,7 +60,7 @@ Build the label map in memory: surviving answers become `Response A`, `Response 
 
 ### 3. Stage 2 — Peer review (self-exclusion)
 
-For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive. Each Stage 2 dispatch must open a fresh session (claudy `ask_agent`); never reuse a Stage 1 session via `send_message`, or the reviewer could see its own Stage 1 answer and self-exclusion is defeated.
+For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive. Each Stage 2 dispatch must open a fresh session (claudy `ask_agent`); never reuse a Stage 1 session via `send_message`, or the reviewer could see its own Stage 1 answer and self-exclusion is defeated. grok's `-p` single-turn mode is stateless, so it is fresh by construction.
 
 ```
 You are evaluating different responses to the following question:
@@ -106,7 +107,7 @@ Log every failure (backend error, empty reply) to `.council/<slug>/run-log.md` a
 - 1 survivor: skip Stage 2. The chairman critically reviews the single answer itself (strengths, gaps, corrections) before synthesizing; note the degraded mode in `final-answer.md` and the report.
 - 0 survivors: report the backend errors, write nothing else.
 
-If the `claudy` MCP server is entirely unavailable, only `claude` remains; apply the 1-survivor rule.
+If the `claudy` MCP server is entirely unavailable, only `claude` and `grok` remain; apply the 1-survivor rule only if grok also fails.
 
 ## Rules
 
