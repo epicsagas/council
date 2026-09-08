@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -9,8 +9,10 @@ fn find_council_dir() -> Result<PathBuf> {
     let home = env::var("HOME").context("HOME not set")?;
     let council = PathBuf::from(home).join(".council");
     if !council.exists() {
-        fs::create_dir_all(&council)
-            .context(format!("Failed to create council directory: {}", council.display()))?;
+        fs::create_dir_all(&council).context(format!(
+            "Failed to create council directory: {}",
+            council.display()
+        ))?;
     }
     Ok(council)
 }
@@ -19,10 +21,7 @@ pub async fn handle_summarize(params: Value) -> Result<Value> {
     let title = params["title"]
         .as_str()
         .context("Missing required parameter: title")?;
-    let model_raw = params["model"]
-        .as_str()
-        .unwrap_or("unknown-model")
-        .trim();
+    let model_raw = params["model"].as_str().unwrap_or("unknown-model").trim();
     let model = if model_raw.is_empty() {
         "unknown-model"
     } else {
@@ -31,9 +30,7 @@ pub async fn handle_summarize(params: Value) -> Result<Value> {
     let content = params["content"]
         .as_str()
         .context("Missing required parameter: content")?;
-    let max_length = params["max_length"]
-        .as_u64()
-        .unwrap_or(2000); // Default: 2000 characters
+    let max_length = params["max_length"].as_u64().unwrap_or(2000); // Default: 2000 characters
 
     // Debug logging
     eprintln!(
@@ -90,4 +87,3 @@ Provide a clear, well-structured summary that preserves all essential informatio
         "instruction": "Please generate a concise summary of the provided content. When you're done, I'll save it to summary.md in the council directory."
     }))
 }
-

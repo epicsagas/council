@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,7 +31,11 @@ pub async fn handle_peer_review(params: Value) -> Result<Value> {
         .or_else(|| params["engine"].as_str())
         .unwrap_or("claude");
     let model_trimmed = model_raw.trim();
-    let model = if model_trimmed.is_empty() { "claude" } else { model_trimmed };
+    let model = if model_trimmed.is_empty() {
+        "claude"
+    } else {
+        model_trimmed
+    };
 
     let model_for_file: String = {
         let sanitized: String = model
@@ -54,16 +58,23 @@ pub async fn handle_peer_review(params: Value) -> Result<Value> {
     let self_model = params.get("self_model").and_then(|v| v.as_str());
 
     // Debug logging
-    eprintln!("DEBUG: peer_review called with params: title={}, model={}, self_model={}",
-        title, model, self_model.unwrap_or("None"));
+    eprintln!(
+        "DEBUG: peer_review called with params: title={}, model={}, self_model={}",
+        title,
+        model,
+        self_model.unwrap_or("None")
+    );
 
     let council_base = find_council_dir()?;
     let base_dir = council_base.join(title);
-    
+
     // Debug logging
-    eprintln!("DEBUG: peer_review - council_base={}, base_dir={}",
-        council_base.display(), base_dir.display());
-    
+    eprintln!(
+        "DEBUG: peer_review - council_base={}, base_dir={}",
+        council_base.display(),
+        base_dir.display()
+    );
+
     if !base_dir.exists() {
         return Err(anyhow::anyhow!(
             "Directory not found: {} (council base: {})",
@@ -79,9 +90,12 @@ pub async fn handle_peer_review(params: Value) -> Result<Value> {
             let entry = entry.ok()?;
             let path = entry.path();
             let file_name = path.file_name()?.to_string_lossy();
-            
-            if file_name.contains("-answer.md") || file_name.ends_with("answer.md")
-                || file_name.contains("-answer.json") || file_name.ends_with("answer.json") {
+
+            if file_name.contains("-answer.md")
+                || file_name.ends_with("answer.md")
+                || file_name.contains("-answer.json")
+                || file_name.ends_with("answer.json")
+            {
                 Some(path)
             } else {
                 None
@@ -100,22 +114,24 @@ pub async fn handle_peer_review(params: Value) -> Result<Value> {
     let mut answers = Vec::new();
     let mut labels = Vec::new();
     for file_path in answer_files.iter() {
-        let content_value = read_stage1_answer(file_path)
-            .context(format!("Failed to parse answer file: {}", file_path.display()))?;
+        let content_value = read_stage1_answer(file_path).context(format!(
+            "Failed to parse answer file: {}",
+            file_path.display()
+        ))?;
 
         let model_name = content_value
             .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown-model");
 
-        if let Some(self_model_name) = self_model {
-            if model_name.eq_ignore_ascii_case(self_model_name) {
-                eprintln!(
-                    "INFO: Skipping self_model '{}' from peer review",
-                    self_model_name
-                );
-                continue;
-            }
+        if let Some(self_model_name) = self_model
+            && model_name.eq_ignore_ascii_case(self_model_name)
+        {
+            eprintln!(
+                "INFO: Skipping self_model '{}' from peer review",
+                self_model_name
+            );
+            continue;
         }
 
         answers.push(json!({
@@ -139,7 +155,7 @@ pub async fn handle_peer_review(params: Value) -> Result<Value> {
 
     // Build review prompt
     let user_query = extract_user_query(&base_dir)?;
-    
+
     let responses_text = answers
         .iter()
         .map(|a| {
@@ -219,19 +235,12 @@ After you complete your review, the system will save it as: peer-review-by-{}.md
 
 fn extract_user_query(base_dir: &Path) -> Result<String> {
     // Try to find the original query in various possible locations
-    let possible_files = [
-        "query.txt",
-        "user_query.txt",
-        "question.txt",
-        "input.txt",
-    ];
+    let possible_files = ["query.txt", "user_query.txt", "question.txt", "input.txt"];
 
     for file_name in &possible_files {
         let file_path = base_dir.join(file_name);
         if file_path.exists() {
-            return Ok(fs::read_to_string(&file_path)?
-                .trim()
-                .to_string());
+            return Ok(fs::read_to_string(&file_path)?.trim().to_string());
         }
     }
 
@@ -242,8 +251,11 @@ fn extract_user_query(base_dir: &Path) -> Result<String> {
             let entry = entry.ok()?;
             let path = entry.path();
             let file_name = path.file_name()?.to_string_lossy();
-            if file_name.contains("-answer.md") || file_name.ends_with("answer.md")
-                || file_name.contains("-answer.json") || file_name.ends_with("answer.json") {
+            if file_name.contains("-answer.md")
+                || file_name.ends_with("answer.md")
+                || file_name.contains("-answer.json")
+                || file_name.ends_with("answer.json")
+            {
                 Some(path)
             } else {
                 None
@@ -253,16 +265,17 @@ fn extract_user_query(base_dir: &Path) -> Result<String> {
 
     if let Some(first_file) = answer_files.first() {
         let content = fs::read_to_string(first_file)?;
-        
+
         // Try JSON format first
-        if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
-            if let Some(query) = json_data.get("query").or(json_data.get("user_query")) {
-                if let Some(query_str) = query.as_str() {
-                    return Ok(query_str.to_string());
-                }
-            }
+        if let Ok(json_data) = serde_json::from_str::<Value>(&content)
+            && let Some(query_str) = json_data
+                .get("query")
+                .or(json_data.get("user_query"))
+                .and_then(|q| q.as_str())
+        {
+            return Ok(query_str.to_string());
         }
-        
+
         // Try Markdown format: look for "- prompt: {prompt}" pattern
         for line in content.lines() {
             let line = line.trim();
@@ -282,16 +295,18 @@ fn extract_user_query(base_dir: &Path) -> Result<String> {
 }
 
 fn read_stage1_answer(path: &Path) -> Result<Value> {
-    let content = fs::read_to_string(path)
-        .context(format!("Failed to read file: {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).context(format!("Failed to read file: {}", path.display()))?;
 
-    let model_from_name = path.file_stem()
+    let model_from_name = path
+        .file_stem()
         .and_then(|s| s.to_str())
         .map(|s| s.replace("-answer", ""))
         .unwrap_or_else(|| "unknown-model".to_string());
 
     if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
-        let model = json_data.get("model")
+        let model = json_data
+            .get("model")
             .and_then(|v| v.as_str())
             .unwrap_or(&model_from_name)
             .to_string();
@@ -322,9 +337,7 @@ fn format_response_content(content: &Value) -> String {
     if let Some(text) = content.as_str() {
         return text.to_string();
     }
-    
+
     // Fallback: pretty print the JSON
     serde_json::to_string_pretty(content).unwrap_or_else(|_| "Invalid content".to_string())
 }
-
-

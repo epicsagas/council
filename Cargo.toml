@@ -1,7 +1,7 @@
 [package]
 name = "mcp-council"
-version = "0.1.2"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
 license = "Apache-2.0"
 description = "MCP server for multi-LLM peer review and council deliberation workflow"
 repository = "https://github.com/epicsagas/mcp-council"
@@ -11,20 +11,20 @@ readme = "README.md"
 keywords = ["mcp", "llm", "ai", "peer-review", "council"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["epicsagas"]
-rust-version = "1.75"
+rust-version = "1.92"
+
+[lib]
+name = "mcp_council"
+path = "src/lib.rs"
 
 [[bin]]
 name = "mcp-council"
 path = "src/main.rs"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
 anyhow = "1"
-thiserror = "2.0.17"
-async-trait = "0.1"
-tokio-stream = "0.1"
-uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-
+llm-kernel = { version = "0.31", features = ["mcp", "client-async", "provider", "tokens", "safety"] }
+reqwest = "0.13"
