@@ -1,3 +1,14 @@
+//! Server-side LLM completion API built on llm-kernel.
+//!
+//! The council tools themselves are prompt/file coordinators: they return a
+//! prompt that the *host* agent (Claude Code, Cursor) executes, which is the
+//! product's interaction model. `complete_with` is the server-side escape
+//! hatch for engines that must be driven directly over HTTP (Anthropic and
+//! OpenAI-compatible providers from the llm-kernel catalog), with the
+//! `cursor-agent` / `codex` CLI binaries as the fallback route. Every response
+//! is secret-masked before it leaves this module, and every call is gated by
+//! the optional `--max-tokens` budget.
+
 use anyhow::{Context, Result};
 use llm_kernel::llm::{AnthropicClient, LLMClient, LLMRequest, OpenAIClient};
 use llm_kernel::provider::ProviderIndex;
@@ -27,13 +38,17 @@ pub fn set_max_tokens_cap(cap: Option<u32>) {
     let _ = BUDGET.set(cap.map(TokenBudget::new));
 }
 
-fn check_budget(estimated_tokens: u32, generation_cap: u32) -> Result<()> {
+/// Reserve `estimated + generation_cap` against the installed budget and
+/// return the reserved amount (0 when no budget is installed). The caller
+/// MUST settle via `settle_budget` on both success and failure paths, so
+/// over-reserved tokens flow back instead of draining the budget.
+fn reserve_budget(estimated_tokens: u32, generation_cap: u32) -> Result<u32> {
     match BUDGET.get().and_then(|b| b.as_ref()) {
-        None => Ok(()),
+        None => Ok(0),
         Some(budget) => {
             let need = estimated_tokens.saturating_add(generation_cap);
             if budget.try_reserve(need) {
-                Ok(())
+                Ok(need)
             } else {
                 Err(anyhow::anyhow!(
                     "Token budget exhausted: need {need} (prompt ~{estimated_tokens} + generation {generation_cap}), {} of {} remain. Raise --max-tokens or shorten the prompt.",
@@ -41,6 +56,19 @@ fn check_budget(estimated_tokens: u32, generation_cap: u32) -> Result<()> {
                     budget.total()
                 ))
             }
+        }
+    }
+}
+
+/// Return `reserved - actual_total` to the budget. No-op without a budget.
+fn settle_budget(reserved: u32, actual_total: u32) {
+    if reserved == 0 {
+        return;
+    }
+    if let Some(Some(budget)) = BUDGET.get() {
+        let refund = reserved.saturating_sub(actual_total);
+        if refund > 0 {
+            budget.release(refund);
         }
     }
 }
@@ -84,6 +112,7 @@ fn resolve(engine: &str) -> Result<Route> {
     // Anthropic is absent from the embedded catalog, so it is wired directly.
     let claude_model = engine
         .strip_prefix("claude:")
+        .or_else(|| engine.strip_prefix("anthropic:"))
         .map(str::to_string)
         .or_else(|| {
             (engine == "claude" || engine == "anthropic").then(|| DEFAULT_CLAUDE_MODEL.to_string())
@@ -144,18 +173,40 @@ pub async fn complete_with(
 ) -> Result<CompletionOutput> {
     let estimated = estimate_tokens(prompt) as u32;
     let generation_cap = max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
-    check_budget(estimated, generation_cap)?;
+    let reserved = reserve_budget(estimated, generation_cap)?;
+    // From here on, every exit path must settle the reservation, otherwise a
+    // failed deliberation permanently drains the budget.
+    let result = complete_inner(engine, prompt, max_tokens, estimated, generation_cap).await;
+    match &result {
+        Ok(out) => settle_budget(
+            reserved,
+            out.prompt_tokens.saturating_add(out.completion_tokens),
+        ),
+        Err(_) => settle_budget(reserved, 0),
+    }
+    result
+}
 
+async fn complete_inner(
+    engine: &str,
+    prompt: &str,
+    max_tokens: Option<u32>,
+    estimated: u32,
+    generation_cap: u32,
+) -> Result<CompletionOutput> {
     eprintln!("mcp-council: engine={engine} ~{estimated} prompt tokens, cap={generation_cap}");
 
     match resolve(engine)? {
         Route::Cli(bin) => {
             let raw = crate::cli_runner::run_llm(bin, prompt).await?;
             let text = mask_secrets(&llm_kernel::safety::strip_ansi(&raw));
+            // CLI engines do not report usage; estimate from the output so
+            // budget accounting does not silently under-count.
+            let output_tokens = estimate_tokens(&text) as u32;
             Ok(CompletionOutput {
                 text,
                 prompt_tokens: estimated,
-                completion_tokens: 0,
+                completion_tokens: output_tokens,
                 cost_usd: None,
             })
         }
@@ -200,16 +251,18 @@ mod tests {
     }
 
     #[test]
-    fn budget_gates_by_installed_cap() {
-        // Unset budget allows anything.
-        assert!(check_budget(1_000_000, DEFAULT_MAX_TOKENS).is_ok());
+    fn budget_gates_and_settles() {
+        // No budget installed: reservations are free (0) and settling is a no-op.
+        assert_eq!(reserve_budget(1_000_000, DEFAULT_MAX_TOKENS).unwrap(), 0);
         // Once the cap is installed, overflow is rejected. BUDGET is
-        // process-global, so both assertions live in this one test.
+        // process-global, so all assertions live in this one test.
         let _ = BUDGET.set(Some(TokenBudget::new(1000)));
-        let err = check_budget(800, DEFAULT_MAX_TOKENS)
-            .expect_err("expected budget exhaustion")
-            .to_string();
-        assert!(err.contains("Token budget exhausted"), "{err}");
+        assert!(reserve_budget(800, DEFAULT_MAX_TOKENS).is_err());
+        // A successful reservation is returned and settles back to the cap.
+        let reserved = reserve_budget(100, 800).unwrap();
+        assert_eq!(reserved, 900);
+        settle_budget(reserved, 300); // refund 600, 300 stays spent
+        assert!(reserve_budget(300, 400).is_ok()); // exactly the remaining 700
     }
 
     #[test]

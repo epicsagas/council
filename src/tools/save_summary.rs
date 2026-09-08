@@ -17,9 +17,11 @@ fn find_council_dir() -> Result<PathBuf> {
 }
 
 pub async fn handle_save_summary(params: Value) -> Result<Value> {
-    let title = params["title"]
-        .as_str()
-        .context("Missing required parameter: title")?;
+    let title = super::sanitize_title(
+        params["title"]
+            .as_str()
+            .context("Missing required parameter: title")?,
+    )?;
     let model_raw = params["model"].as_str().unwrap_or("unknown-model").trim();
     let model = if model_raw.is_empty() {
         "unknown-model"

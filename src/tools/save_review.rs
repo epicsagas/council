@@ -17,9 +17,11 @@ fn find_council_dir() -> Result<PathBuf> {
 }
 
 pub async fn handle_save_review(params: Value) -> Result<Value> {
-    let title = params["title"]
-        .as_str()
-        .context("Missing required parameter: title")?;
+    let title = super::sanitize_title(
+        params["title"]
+            .as_str()
+            .context("Missing required parameter: title")?,
+    )?;
     // Try to get model from various sources in priority order:
     // 1. Explicit model parameter
     // 2. engine parameter (for backward compatibility)

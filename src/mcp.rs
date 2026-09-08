@@ -235,6 +235,16 @@ mod tests {
     }
 
     #[test]
+    fn malformed_line_gets_parse_error_not_silence() {
+        // Regression guard for the wire contract: the old server skipped
+        // malformed lines silently; the kernel must answer -32700 and the
+        // stdio loop keeps running.
+        let server = McpServer::new().kernel;
+        let resp = dispatch(&server, "not json at all").unwrap();
+        assert!(resp.contains("-32700"), "{resp}");
+    }
+
+    #[test]
     fn initialize_lists_server_info() {
         let server = McpServer::new().kernel;
         let resp = dispatch(

@@ -17,9 +17,11 @@ fn find_council_dir() -> Result<PathBuf> {
 }
 
 pub async fn handle_peer_review(params: Value) -> Result<Value> {
-    let title = params["title"]
-        .as_str()
-        .context("Missing required parameter: title")?;
+    let title = super::sanitize_title(
+        params["title"]
+            .as_str()
+            .context("Missing required parameter: title")?,
+    )?;
     // Try to get model from various sources in priority order:
     // 1. Explicit model parameter
     // 2. self_model (when model is not explicitly set but self_model is)
