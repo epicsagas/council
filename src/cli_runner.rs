@@ -3,8 +3,9 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-// Currently unused but kept for future compatibility with external CLI tools
-#[allow(dead_code)]
+/// Shell out to an installed LLM CLI. Fallback path for engines without a
+/// direct API equivalent (`cursor-agent`, `codex`); output is ANSI-stripped
+/// here and secret-masked by the caller.
 pub async fn run_llm(engine: &str, prompt: &str) -> Result<String> {
     let bin = match engine {
         "claude" => "claude",
@@ -41,10 +42,7 @@ pub async fn run_llm(engine: &str, prompt: &str) -> Result<String> {
         .context(format!("Failed to spawn {}", bin))?;
 
     {
-        let mut stdin = child
-            .stdin
-            .take()
-            .context("Failed to take stdin")?;
+        let mut stdin = child.stdin.take().context("Failed to take stdin")?;
         stdin
             .write_all(prompt.as_bytes())
             .await
@@ -67,6 +65,6 @@ pub async fn run_llm(engine: &str, prompt: &str) -> Result<String> {
         ));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.to_string())
+    let stdout = llm_kernel::safety::strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    Ok(stdout)
 }

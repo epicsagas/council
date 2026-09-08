@@ -1,10 +1,7 @@
-mod mcp;
-mod tools;
-mod cli_runner;
-
-use anyhow::Result;
-use mcp::McpServer;
-use serde_json::{json, Value};
+use anyhow::{Context, Result};
+use mcp_council::llm_client;
+use mcp_council::mcp::McpServer;
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -23,6 +20,9 @@ fn print_help() {
     eprintln!();
     eprintln!("USAGE:");
     eprintln!("  mcp-council                Run MCP server (default)");
+    eprintln!(
+        "  mcp-council --max-tokens <N>  Pre-arm token budget for server-side completions (library `complete_with`; host-driven tools consume no budget)"
+    );
     eprintln!("  mcp-council --init         Install to both Cursor and Claude Code (interactive)");
     eprintln!("  mcp-council --init-cursor  Install to ~/.cursor/commands/<folder>/");
     eprintln!("  mcp-council --init-claude  Install to ~/.claude/commands/<folder>/");
@@ -89,7 +89,7 @@ fn merge_mcp_config(config_path: &PathBuf) -> Result<bool> {
     };
 
     // Ensure mcpServers exists
-    if !config.get("mcpServers").is_some() {
+    if config.get("mcpServers").is_none() {
         config["mcpServers"] = json!({});
     }
 
@@ -159,7 +159,10 @@ fn setup_mcp_config(target: &str) -> Result<()> {
 
 fn install_commands(base_dir: &str, subfolder: &str) -> Result<()> {
     let home = env::var("HOME").expect("HOME environment variable not set");
-    let cmd_dir = PathBuf::from(&home).join(base_dir).join("commands").join(subfolder);
+    let cmd_dir = PathBuf::from(&home)
+        .join(base_dir)
+        .join("commands")
+        .join(subfolder);
     install_commands_to(cmd_dir)
 }
 
@@ -203,9 +206,29 @@ async fn main() -> Result<()> {
             Ok(())
         }
         _ => {
-            let mut server = McpServer::new();
+            // Optional token cap for server-side completions: --max-tokens <N>
+            // Gates `llm_client::complete_with` only; the shipped council tools
+            // are host-driven prompt/file coordinators and never call it, so
+            // today this flag pre-arms the budget for library consumers and
+            // future server-side tool modes.
+            if let Some(pos) = args.iter().position(|a| a == "--max-tokens") {
+                let value = args
+                    .get(pos + 1)
+                    .context("--max-tokens requires a positive integer argument")?;
+                let cap: u32 = value.parse().context(format!(
+                    "--max-tokens must be a positive integer, got '{value}'"
+                ))?;
+                if cap == 0 {
+                    anyhow::bail!("--max-tokens must be greater than 0");
+                }
+                llm_client::set_max_tokens_cap(Some(cap));
+                eprintln!(
+                    "mcp-council: token budget set to {cap} (gates server-side completions only)"
+                );
+            }
+
+            let server = McpServer::new();
             server.run().await
         }
     }
 }
-

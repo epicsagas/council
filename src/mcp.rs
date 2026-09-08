@@ -1,517 +1,320 @@
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use anyhow::Result;
+use llm_kernel::error::KernelError;
+use llm_kernel::mcp::{JsonRpcDispatcher, McpServer as KernelMcpServer, ToolDescription};
+use serde_json::{Value, json};
 
-#[derive(Debug, Serialize, Deserialize)]
-struct McpRequest {
-    jsonrpc: String,
-    id: Option<Value>,
-    method: String,
-    params: Option<Value>,
+fn tool_specs() -> Vec<(&'static str, &'static str, Value)> {
+    vec![
+        (
+            "council.first_answer",
+            "Stage1: Save current model answer into .council/{slug}/{model}-answer.md",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name (slug)"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name (e.g., sonnet, gemini, gpt-5.1)",
+                        "default": "unknown-model"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "User question or prompt text"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full model answer content to save"
+                    }
+                },
+                "required": ["title", "prompt", "content"]
+            }),
+        ),
+        (
+            "council.peer_review",
+            "Stage2: Read Stage1 JSON files and generate peer review using local LLM CLI",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "LLM model name performing the review (examples: claude, gemini, glm-4.6)",
+                        "default": "claude"
+                    },
+                    "self_model": {
+                        "type": "string",
+                        "description": "Model name to exclude from peer review (its own response)"
+                    }
+                },
+                "required": ["title"]
+            }),
+        ),
+        (
+            "council.finalize",
+            "Stage3: Read Stage1 and Stage2 JSON files and generate final answer using local LLM CLI",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "LLM model name performing the synthesis (examples: claude, gemini, glm-4.6)",
+                        "default": "claude"
+                    },
+                    "engine": {
+                        "type": "string",
+                        "description": "LLM model/engine (for backward compatibility, use 'model' instead)",
+                        "default": "claude"
+                    }
+                },
+                "required": ["title"]
+            }),
+        ),
+        (
+            "council.save_review",
+            "Save peer review content to markdown file",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "LLM model name (examples: claude, gemini, glm-4.6, gpt-4)"
+                    },
+                    "engine": {
+                        "type": "string",
+                        "description": "LLM model/engine name (for backward compatibility, use 'model' instead)",
+                        "default": "claude"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Peer review content to save"
+                    }
+                },
+                "required": ["title", "content"]
+            }),
+        ),
+        (
+            "council.summarize",
+            "Generate a summary prompt for large documents to reduce token costs in Stage2/Stage3",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name (slug)"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name performing the summary (e.g., sonnet, gemini, gpt-5.1)",
+                        "default": "unknown-model"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Original content to summarize"
+                    },
+                    "max_length": {
+                        "type": "integer",
+                        "description": "Target summary length in characters (default: 2000)",
+                        "default": 2000
+                    }
+                },
+                "required": ["title", "content"]
+            }),
+        ),
+        (
+            "council.save_summary",
+            "Save summary content to markdown file for use in Stage2/Stage3",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Conversation title/directory name"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name that generated the summary"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Summary content to save"
+                    }
+                },
+                "required": ["title", "content"]
+            }),
+        ),
+    ]
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct McpResponse {
-    jsonrpc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<McpError>,
+fn into_kernel_result(result: Result<Value>) -> llm_kernel::error::Result<Value> {
+    // Tool handlers are anyhow-based; KernelError has no anyhow variant, so the
+    // message travels in Config.
+    result.map_err(|e| KernelError::Config(e.to_string()))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct McpError {
-    code: i32,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
+pub struct McpServer {
+    kernel: KernelMcpServer,
 }
 
-pub struct McpServer;
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl McpServer {
     pub fn new() -> Self {
-        Self
+        let mut kernel = KernelMcpServer::new("mcp-council", env!("CARGO_PKG_VERSION"));
+
+        for (name, description, input_schema) in tool_specs() {
+            kernel.register_tool(ToolDescription {
+                name: (*name).to_string(),
+                description: (*description).to_string(),
+                input_schema: input_schema.clone(),
+            });
+        }
+
+        kernel.set_async_handler("council.first_answer", |params| async move {
+            into_kernel_result(crate::tools::first_answer::handle_first_answer(params).await)
+        });
+        kernel.set_async_handler("council.peer_review", |params| async move {
+            into_kernel_result(crate::tools::peer_review::handle_peer_review(params).await)
+        });
+        kernel.set_async_handler("council.finalize", |params| async move {
+            into_kernel_result(crate::tools::finalize::handle_finalize(params).await)
+        });
+        kernel.set_async_handler("council.save_review", |params| async move {
+            into_kernel_result(crate::tools::save_review::handle_save_review(params).await)
+        });
+        kernel.set_async_handler("council.summarize", |params| async move {
+            into_kernel_result(crate::tools::summarize::handle_summarize(params).await)
+        });
+        kernel.set_async_handler("council.save_summary", |params| async move {
+            into_kernel_result(crate::tools::save_summary::handle_save_summary(params).await)
+        });
+
+        Self { kernel }
     }
 
-    pub async fn run(&mut self) -> Result<()> {
-        let stdin = tokio::io::stdin();
-        let mut reader = BufReader::new(stdin);
-        let mut stdout = tokio::io::stdout();
-
-        let mut buffer = String::new();
-
-        eprintln!("DEBUG: MCP server started, waiting for requests...");
-
-        loop {
-            buffer.clear();
-            let bytes_read = reader.read_line(&mut buffer).await?;
-
-            if bytes_read == 0 {
-                eprintln!("DEBUG: EOF received, shutting down");
-                break; // EOF
-            }
-
-            let line = buffer.trim();
-            if line.is_empty() {
-                continue;
-            }
-
-            eprintln!("DEBUG: Received line: {}", line);
-
-            match self.handle_request(line).await {
-                Ok(Some(response)) => {
-                    let response_json = serde_json::to_string(&response)?;
-                    eprintln!("DEBUG: Sending response: {}", response_json);
-                    stdout.write_all(response_json.as_bytes()).await?;
-                    stdout.write_all(b"\n").await?;
-                    stdout.flush().await?;
-                }
-                Ok(None) => {
-                    // Notification (no id) or intentionally suppressed response
-                    eprintln!("DEBUG: Suppressed response (notification)");
-                }
-                Err(e) => {
-                    // For malformed input (e.g., non-JSON lines), log and skip without emitting a JSON response
-                    eprintln!("ERROR: Error handling request: {}", e);
-                    eprintln!("ERROR: Line was: {}", line);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_request(&self, line: &str) -> Result<Option<McpResponse>> {
-        eprintln!("DEBUG: Parsing request: {}", line);
-        let request: McpRequest = match serde_json::from_str(line) {
-            Ok(req) => req,
-            Err(e) => {
-                eprintln!("ERROR: Failed to parse JSON-RPC request: {}", e);
-                eprintln!("ERROR: Input was: {}", line);
-                return Err(anyhow::anyhow!("Failed to parse JSON-RPC request: {}", e));
-            }
-        };
-        
-        eprintln!("DEBUG: Parsed method: {}, id: {:?}", request.method, request.id);
-
-        let mut request_id = request.id.clone();
-        let is_notification = match request_id.as_ref() {
-            None => true,
-            Some(v) if v.is_null() => true,
-            Some(v) if v.is_boolean() => true,
-            Some(v) if v.is_array() => true,
-            Some(v) if v.is_object() => true,
-            _ => false,
-        };
-        if is_notification && request_id.is_some() {
-            eprintln!(
-                "Invalid JSON-RPC id (ignored, treated as notification): {:?}",
-                request_id
-            );
-            request_id = None;
-        }
-        let response_id = if is_notification { None } else { request_id.clone() };
-
-        let result = match request.method.as_str() {
-            "initialize" => {
-                eprintln!("DEBUG: Received initialize request");
-                Some(json!({
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": "mcp-council",
-                        "version": "0.1.0"
-                    }
-                }))
-            }
-            "initialized" => {
-                // MCP protocol: initialized is a notification, no response needed
-                eprintln!("DEBUG: Received initialized notification");
-                return Ok(None);
-            }
-            "tools/list" => {
-                Some(json!({
-                    "tools": [
-                        {
-                            "name": "council.first_answer",
-                            "description": "Stage1: Save current model answer into .council/{slug}/{model}-answer.md",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name (slug)"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "Model name (e.g., sonnet, gemini, gpt-5.1)",
-                                        "default": "unknown-model"
-                                    },
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "User question or prompt text"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "Full model answer content to save"
-                                    }
-                                },
-                                "required": ["title", "prompt", "content"]
-                            }
-                        },
-                        {
-                            "name": "council.peer_review",
-                            "description": "Stage2: Read Stage1 JSON files and generate peer review using local LLM CLI",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "LLM model name performing the review (examples: claude, gemini, glm-4.6)",
-                                        "default": "claude"
-                                    },
-                                    "self_model": {
-                                        "type": "string",
-                                        "description": "Model name to exclude from peer review (its own response)"
-                                    }
-                                },
-                                "required": ["title"]
-                            }
-                        },
-                        {
-                            "name": "council.finalize",
-                            "description": "Stage3: Read Stage1 and Stage2 JSON files and generate final answer using local LLM CLI",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "LLM model name performing the synthesis (examples: claude, gemini, glm-4.6)",
-                                        "default": "claude"
-                                    },
-                                    "engine": {
-                                        "type": "string",
-                                        "description": "LLM model/engine (for backward compatibility, use 'model' instead)",
-                                        "default": "claude"
-                                    }
-                                },
-                                "required": ["title"]
-                            }
-                        },
-                        {
-                            "name": "council.save_review",
-                            "description": "Save peer review content to markdown file",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "LLM model name (examples: claude, gemini, glm-4.6, gpt-4)"
-                                    },
-                                    "engine": {
-                                        "type": "string",
-                                        "description": "LLM model/engine name (for backward compatibility, use 'model' instead)",
-                                        "default": "claude"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "Peer review content to save"
-                                    }
-                                },
-                                "required": ["title", "content"]
-                            }
-                        },
-                        {
-                            "name": "council.summarize",
-                            "description": "Generate a summary prompt for large documents to reduce token costs in Stage2/Stage3",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name (slug)"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "Model name performing the summary (e.g., sonnet, gemini, gpt-5.1)",
-                                        "default": "unknown-model"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "Original content to summarize"
-                                    },
-                                    "max_length": {
-                                        "type": "integer",
-                                        "description": "Target summary length in characters (default: 2000)",
-                                        "default": 2000
-                                    }
-                                },
-                                "required": ["title", "content"]
-                            }
-                        },
-                        {
-                            "name": "council.save_summary",
-                            "description": "Save summary content to markdown file for use in Stage2/Stage3",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Conversation title/directory name"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "Model name that generated the summary"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "Summary content to save"
-                                    }
-                                },
-                                "required": ["title", "content"]
-                            }
-                        }
-                    ]
-                }))
-            }
-            "tools/call" => {
-                let params = request.params.context("Missing params")?;
-                let tool_name = params["name"]
-                    .as_str()
-                    .context("Missing tool name")?;
-                let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
-
-                match tool_name {
-                    "council.first_answer" => {
-                        match crate::tools::first_answer::handle_first_answer(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Stage1 save failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Stage1 save failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    "council.peer_review" => {
-                        match crate::tools::peer_review::handle_peer_review(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Peer review failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Peer review failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    "council.finalize" => {
-                        match crate::tools::finalize::handle_finalize(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Finalize failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Finalize failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    "council.save_review" => {
-                        match crate::tools::save_review::handle_save_review(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Save review failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Save review failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    "council.summarize" => {
-                        match crate::tools::summarize::handle_summarize(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Summarize failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Summarize failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    "council.save_summary" => {
-                        match crate::tools::save_summary::handle_save_summary(arguments).await {
-                            Ok(result) => Some(json!({
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": serde_json::to_string(&result)?
-                                    }
-                                ]
-                            })),
-                            Err(e) => {
-                                if is_notification {
-                                    eprintln!("Save summary failed for notification: {}", e);
-                                    return Ok(None);
-                                }
-                                return Ok(Some(McpResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: response_id.clone(),
-                                    result: None,
-                                    error: Some(McpError {
-                                        code: -32603,
-                                        message: format!("Save summary failed: {}", e),
-                                        data: None,
-                                    }),
-                                }));
-                            }
-                        }
-                    }
-                    _ => {
-                        if is_notification {
-                            return Ok(None);
-                        }
-                        return Ok(Some(McpResponse {
-                            jsonrpc: "2.0".to_string(),
-                            id: response_id.clone(),
-                            result: None,
-                            error: Some(McpError {
-                                code: -32601,
-                                message: format!("Unknown tool: {}", tool_name),
-                                data: None,
-                            }),
-                        }));
-                    }
-                }
-            }
-            _ => {
-                if is_notification {
-                    return Ok(None);
-                }
-                return Ok(Some(McpResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: response_id.clone(),
-                    result: None,
-                    error: Some(McpError {
-                        code: -32601,
-                        message: format!("Method not found: {}", request.method),
-                        data: None,
-                    }),
-                }));
-            }
-        };
-
-        if is_notification {
-            Ok(None)
-        } else {
-            Ok(Some(McpResponse {
-                jsonrpc: "2.0".to_string(),
-                id: response_id,
-                result,
-                error: None,
-            }))
-        }
+    pub async fn run(&self) -> Result<()> {
+        let dispatcher = JsonRpcDispatcher::new(&self.kernel);
+        dispatcher
+            .run_stdio_async()
+            .await
+            .map_err(|e| anyhow::anyhow!("stdio transport failed: {e}"))
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(fut)
+    }
+
+    fn dispatch(server: &KernelMcpServer, line: &str) -> Option<String> {
+        block_on(JsonRpcDispatcher::new(server).dispatch_async(line))
+    }
+
+    #[test]
+    fn malformed_line_gets_parse_error_not_silence() {
+        // Regression guard for the wire contract: the old server skipped
+        // malformed lines silently; the kernel must answer -32700 and the
+        // stdio loop keeps running.
+        let server = McpServer::new().kernel;
+        let resp = dispatch(&server, "not json at all").unwrap();
+        assert!(resp.contains("-32700"), "{resp}");
+    }
+
+    #[test]
+    fn initialize_lists_server_info() {
+        let server = McpServer::new().kernel;
+        let resp = dispatch(
+            &server,
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+        )
+        .unwrap();
+        assert!(resp.contains("\"name\":\"mcp-council\""), "{resp}");
+    }
+
+    #[test]
+    fn tools_list_has_all_six_tools() {
+        let server = McpServer::new().kernel;
+        let resp = dispatch(&server, r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap();
+        for name in [
+            "council.first_answer",
+            "council.peer_review",
+            "council.finalize",
+            "council.save_review",
+            "council.summarize",
+            "council.save_summary",
+        ] {
+            assert!(resp.contains(name), "missing {name} in {resp}");
+        }
+    }
+
+    #[test]
+    fn unknown_method_is_32601() {
+        let server = McpServer::new().kernel;
+        let resp = dispatch(
+            &server,
+            r#"{"jsonrpc":"2.0","id":3,"method":"nope/method"}"#,
+        )
+        .unwrap();
+        assert!(resp.contains("-32601"), "{resp}");
+    }
+
+    #[test]
+    fn unknown_tool_is_32602() {
+        let server = McpServer::new().kernel;
+        let resp = dispatch(
+            &server,
+            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"council.nope","arguments":{}}}"#,
+        )
+        .unwrap();
+        assert!(resp.contains("-32602"), "{resp}");
+    }
+
+    #[test]
+    fn notification_gets_no_response() {
+        let server = McpServer::new().kernel;
+        let resp = dispatch(
+            &server,
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        );
+        assert!(resp.is_none());
+    }
+
+    #[test]
+    fn tool_error_is_in_band_is_error() {
+        // A handler error (here: sanitize_title rejecting a traversal title
+        // before any filesystem access, so the test has no side effects on
+        // $HOME) must come back as isError:true inside a successful JSON-RPC
+        // envelope, per MCP spec.
+        let server = McpServer::new().kernel;
+        let resp = dispatch(
+            &server,
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"council.save_summary","arguments":{"title":"../evil","content":"x"}}}"#,
+        )
+        .unwrap();
+        assert!(resp.contains("\"isError\":true"), "{resp}");
+    }
+}

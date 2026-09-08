@@ -212,7 +212,9 @@ For a full walkthrough, see [QUICKSTART.md](QUICKSTART.md).
 
 ## Technical Notes
 
-- **MCP Protocol**: JSON-RPC 2.0 compliant server
+- **MCP Protocol**: JSON-RPC 2.0 compliant server, built on the [`llm-kernel`](https://crates.io/crates/llm-kernel) MCP stack (requires Rust 1.92+, edition 2024)
+- **Server-Side Completions (optional)**: `council.finalize`-style flows stay host-driven by default, but the binary exposes a server-side completion API (`complete_with`) for direct HTTP calls. Engines: `claude[:<model>]` (uses `ANTHROPIC_API_KEY`), any llm-kernel catalog provider or model id such as `gemini`, `zai`/`glm-5`, `deepseek` (keys via the provider's `<PROVIDER>_API_KEY` env var), and `cursor-agent`/`codex` via installed CLIs. API keys are only ever read from the environment, never stored. Responses are secret-masked and ANSI-stripped
+- **Token Budget**: `mcp-council --max-tokens <N>` pre-arms a process-wide budget that gates server-side completions (`complete_with`, library API). The shipped council tools are host-driven and consume no budget; an exhausted budget fails fast with a clear error
 - **Async Rust**: Non-blocking I/O operations
 - **Error Handling**: Comprehensive error propagation and context
 - **File Discovery**: Intelligent `.council/` directory search up to 10 parent levels
