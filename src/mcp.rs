@@ -305,12 +305,14 @@ mod tests {
 
     #[test]
     fn tool_error_is_in_band_is_error() {
-        // save_summary against a nonexistent council dir must come back as
-        // isError:true inside a successful JSON-RPC envelope, per MCP spec.
+        // A handler error (here: sanitize_title rejecting a traversal title
+        // before any filesystem access, so the test has no side effects on
+        // $HOME) must come back as isError:true inside a successful JSON-RPC
+        // envelope, per MCP spec.
         let server = McpServer::new().kernel;
         let resp = dispatch(
             &server,
-            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"council.save_summary","arguments":{"title":"definitely-missing-dir-xyz","content":"x"}}}"#,
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"council.save_summary","arguments":{"title":"../evil","content":"x"}}}"#,
         )
         .unwrap();
         assert!(resp.contains("\"isError\":true"), "{resp}");

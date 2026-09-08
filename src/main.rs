@@ -20,7 +20,9 @@ fn print_help() {
     eprintln!();
     eprintln!("USAGE:");
     eprintln!("  mcp-council                Run MCP server (default)");
-    eprintln!("  mcp-council --max-tokens <N>  Cap total deliberation tokens");
+    eprintln!(
+        "  mcp-council --max-tokens <N>  Pre-arm token budget for server-side completions (library `complete_with`; host-driven tools consume no budget)"
+    );
     eprintln!("  mcp-council --init         Install to both Cursor and Claude Code (interactive)");
     eprintln!("  mcp-council --init-cursor  Install to ~/.cursor/commands/<folder>/");
     eprintln!("  mcp-council --init-claude  Install to ~/.claude/commands/<folder>/");
@@ -204,7 +206,11 @@ async fn main() -> Result<()> {
             Ok(())
         }
         _ => {
-            // Optional deliberation-wide token cap: --max-tokens <N>
+            // Optional token cap for server-side completions: --max-tokens <N>
+            // Gates `llm_client::complete_with` only; the shipped council tools
+            // are host-driven prompt/file coordinators and never call it, so
+            // today this flag pre-arms the budget for library consumers and
+            // future server-side tool modes.
             if let Some(pos) = args.iter().position(|a| a == "--max-tokens") {
                 let value = args
                     .get(pos + 1)
@@ -216,7 +222,9 @@ async fn main() -> Result<()> {
                     anyhow::bail!("--max-tokens must be greater than 0");
                 }
                 llm_client::set_max_tokens_cap(Some(cap));
-                eprintln!("mcp-council: token budget set to {cap}");
+                eprintln!(
+                    "mcp-council: token budget set to {cap} (gates server-side completions only)"
+                );
             }
 
             let server = McpServer::new();
