@@ -6,8 +6,8 @@
     "name": "epicsagas",
     "url": "https://github.com/epicsagas"
   },
-  "homepage": "https://github.com/epicsagas/mcp-council",
-  "repository": "https://github.com/epicsagas/mcp-council",
+  "homepage": "https://github.com/epicsagas/council",
+  "repository": "https://github.com/epicsagas/council",
   "license": "Apache-2.0",
   "keywords": [],
   "skills": "./skills/",

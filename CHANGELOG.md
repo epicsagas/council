@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - OSS community files: CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, issue and pull request templates.
-- Plugin packaging for Claude Code, Codex, Antigravity (agy), and Grok; install via each host's plugin manager (e.g. `claude plugin marketplace add epicsagas/mcp-council`).
+- Plugin packaging for Claude Code, Codex, Antigravity (agy), and Grok; install via each host's plugin manager (e.g. `claude plugin marketplace add epicsagas/council`).
 
 ## [0.2.0] - 2026-09-08
 
@@ -44,8 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Initial release of the Rust MCP council server.
 
-[Unreleased]: https://github.com/epicsagas/mcp-council/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/epicsagas/mcp-council/compare/v0.1.2...v0.2.0
-[0.1.2]: https://github.com/epicsagas/mcp-council/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/epicsagas/mcp-council/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/epicsagas/mcp-council/releases/tag/v0.1.0
+[Unreleased]: https://github.com/epicsagas/council/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/epicsagas/council/compare/v0.1.2...v0.2.0
+[0.1.2]: https://github.com/epicsagas/council/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/epicsagas/council/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/epicsagas/council/releases/tag/v0.1.0

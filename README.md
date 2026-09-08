@@ -1,8 +1,8 @@
 # Council
 
-[![Stars](https://img.shields.io/github/stars/epicsagas/mcp-council?style=flat-square&color=ffd700&logo=github)](https://github.com/epicsagas/mcp-council/stargazers)
-[![Issues](https://img.shields.io/github/issues/epicsagas/mcp-council?style=flat-square&color=ff6b6b&logo=github)](https://github.com/epicsagas/mcp-council/issues)
-[![Last commit](https://img.shields.io/github/last-commit/epicsagas/mcp-council?style=flat-square&color=58a6ff&logo=git)](https://github.com/epicsagas/mcp-council/commits/main)
+[![Stars](https://img.shields.io/github/stars/epicsagas/council?style=flat-square&color=ffd700&logo=github)](https://github.com/epicsagas/council/stargazers)
+[![Issues](https://img.shields.io/github/issues/epicsagas/council?style=flat-square&color=ff6b6b&logo=github)](https://github.com/epicsagas/council/issues)
+[![Last commit](https://img.shields.io/github/last-commit/epicsagas/council?style=flat-square&color=58a6ff&logo=git)](https://github.com/epicsagas/council/commits/main)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3fb950?style=flat-square)](LICENSE)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
 
@@ -37,27 +37,27 @@ Why it works:
 Claude Code:
 
 ```bash
-claude plugin marketplace add epicsagas/mcp-council
+claude plugin marketplace add epicsagas/council
 claude plugin install council
 ```
 
 Codex:
 
 ```bash
-codex plugin marketplace add epicsagas/mcp-council
+codex plugin marketplace add epicsagas/council
 codex plugin add council
 ```
 
 Antigravity (agy):
 
 ```bash
-agy plugin install https://github.com/epicsagas/mcp-council
+agy plugin install https://github.com/epicsagas/council
 ```
 
 Grok:
 
 ```bash
-grok plugin install epicsagas/mcp-council --trust
+grok plugin install epicsagas/council --trust
 ```
 
 Any other host: copy `skills/council/` into the host's skills directory.

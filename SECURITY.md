@@ -6,7 +6,7 @@ This project is a single Claude Code skill with no runtime dependencies. Only th
 
 ## Reporting a vulnerability
 
-Please use [GitHub private vulnerability reporting](https://github.com/epicsagas/mcp-council/security/advisories/new). Do not open a public issue for security reports.
+Please use [GitHub private vulnerability reporting](https://github.com/epicsagas/council/security/advisories/new). Do not open a public issue for security reports.
 
 ## Scope
 
