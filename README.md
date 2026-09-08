@@ -38,7 +38,7 @@ Why it works:
 |---|---|
 | Claude Code | `claude plugin marketplace add epicsagas/mcp-council`, then `claude plugin install council` |
 | Codex | `codex plugin marketplace add epicsagas/mcp-council`, then `codex plugin add council` |
-| Antigravity (agy) | clone the repo, then `agy plugin install mcp-council` |
+| Antigravity (agy) | `agy plugin install https://github.com/epicsagas/mcp-council` |
 | Grok | `grok plugin install epicsagas/mcp-council --trust` |
 | Any host (manual) | copy `skills/council/` into the host's skills directory |
 
