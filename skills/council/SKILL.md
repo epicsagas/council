@@ -9,16 +9,18 @@ Three-stage deliberation: independent answers from multiple model families, anon
 
 ## Panel
 
-Default councilors, dispatched in parallel from a single message:
+Default councilors. Each is dispatched as one headless, read-only CLI invocation from the host session, in parallel from a single message:
 
 | Councilor | Channel |
 |---|---|
-| claude | Agent tool, subagent `general-purpose` |
-| codex | `mcp__claudy__ask_agent` with `agent: "codex"` |
-| agy (Gemini) | `mcp__claudy__ask_agent` with `agent: "agy"` |
-| grok | Bash: `grok --permission-mode plan -p "<prompt>"` (single-turn, reply on stdout) |
+| claude | `claude --permission-mode plan -p "<prompt>"` |
+| codex | `codex exec -s read-only "<prompt>"` |
+| agy (Gemini) | `agy --mode plan -p "<prompt>"` |
+| grok | `grok --permission-mode plan -p "<prompt>"` |
 
-If the user names a panel, use theirs. Otherwise use the default three.
+Every channel starts a fresh process, prints the reply to stdout, and exits. No MCP server is required; the host session, on any agent host with a shell, performs all dispatch and all file writes.
+
+If the user names a panel, use theirs. Otherwise use the default four.
 
 ## Procedure
 
@@ -60,7 +62,7 @@ Build the label map in memory: surviving answers become `Response A`, `Response 
 
 ### 3. Stage 2 — Peer review (self-exclusion)
 
-For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive. Each Stage 2 dispatch must open a fresh session (claudy `ask_agent`); never reuse a Stage 1 session via `send_message`, or the reviewer could see its own Stage 1 answer and self-exclusion is defeated. grok's `-p` single-turn mode is stateless, so it is fresh by construction.
+For each councilor, dispatch (parallel, same channel it used in Stage 1) the review prompt: the anonymized packet with that councilor's own response REMOVED. After removal, relabel the remaining responses so labels stay consecutive. Every channel is a single-shot process, so each dispatch is fresh by construction. Never resume a councilor's Stage 1 session (codex `exec resume`, agy `--conversation`, or any session-bridge tool): a reviewer that can see its own Stage 1 answer defeats self-exclusion.
 
 ```
 You are evaluating different responses to the following question:
@@ -101,13 +103,11 @@ Reply in chat: the verdict in 3 to 5 lines (chairman's bottom line, strongest co
 
 ## Degradation
 
-Log every failure (backend error, empty reply) to `.council/<slug>/run-log.md` and drop that councilor.
+Before dispatch, check each councilor's CLI with `command -v`; a missing CLI, a non-zero exit, or empty stdout is a failure. Quota and auth errors count as failures for that run. Log every failure to `.council/<slug>/run-log.md` and drop that councilor.
 
 - 2+ survivors: normal flow.
 - 1 survivor: skip Stage 2. The chairman critically reviews the single answer itself (strengths, gaps, corrections) before synthesizing; note the degraded mode in `final-answer.md` and the report.
 - 0 survivors: report the backend errors, write nothing else.
-
-If the `claudy` MCP server is entirely unavailable, only `claude` and `grok` remain; apply the 1-survivor rule only if grok also fails.
 
 ## Rules
 

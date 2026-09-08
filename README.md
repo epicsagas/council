@@ -8,9 +8,9 @@
 
 **Multi-model council: independent answers, anonymized peer review, chairman synthesis.**
 
-A single Claude Code skill. Four model families (claude, codex, agy/Gemini, grok) answer the same question independently, review each other anonymously with self-exclusion, and a chairman synthesizes the final answer. Inspired by [karpathy/llm-council](https://github.com/karpathy/llm-council).
+A single skill file that runs on any agent host with a shell. Four model families (claude, codex, agy/Gemini, grok) answer the same question independently, review each other anonymously with self-exclusion, and a chairman synthesizes the final answer. Inspired by [karpathy/llm-council](https://github.com/karpathy/llm-council).
 
-This project started as a Rust MCP server plus Cursor chat commands. Modern agents made that plumbing redundant: agents read and write files natively, spawn subagents in parallel, and reach external CLIs (codex, agy) through MCP. The whole system is now one skill file. The original Rust implementation is preserved at the `rust-legacy` and `v0.2.0` tags.
+This project started as a Rust MCP server plus Cursor chat commands. Modern agents made that plumbing redundant: agents read and write files natively, dispatch each other as headless CLI processes, and need no MCP layer in between. The whole system is now one skill file. The original Rust implementation is preserved at the `rust-legacy` and `v0.2.0` tags.
 
 ## The pattern
 
@@ -34,22 +34,16 @@ Why it works:
 
 ## Install
 
-Install as a Claude Code plugin:
+Claude Code:
 
 ```bash
 claude plugin marketplace add epicsagas/mcp-council
 claude plugin install council
 ```
 
-Or copy the skill manually:
+Codex and Grok ship plugin managers too: `codex plugin marketplace add epicsagas/mcp-council`, `grok plugin install epicsagas/mcp-council --trust`. Or copy `skills/council/` into the host's skills directory by hand.
 
-```bash
-git clone https://github.com/epicsagas/mcp-council
-mkdir -p ~/.claude/skills
-cp -r mcp-council/skills/council ~/.claude/skills/
-```
-
-Requirements: Claude Code. The claudy MCP server adds the codex and agy councilors and a grok CLI install adds grok; a local-only claude fallback applies automatically when the others are unavailable.
+Requirements: the councilor CLIs on PATH (`claude`, `codex`, `agy`, `grok`). Each councilor drops out independently when its CLI is missing or quota-limited. No MCP server is required.
 
 ## Usage
 
