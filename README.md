@@ -17,7 +17,7 @@ This project started as a Rust MCP server plus Cursor chat commands. Modern agen
 ```mermaid
 flowchart TD
     Q["Question"] --> S1["Stage 1: Independent answers<br/>claude + codex + agy + grok, parallel,<br/>no cross-visibility"]
-    S1 --> A["anonymized responses<br/>A / B / C"]
+    S1 --> A["anonymized responses<br/>A / B / C / D"]
     A --> S2["Stage 2: Peer review<br/>each councilor reviews the others,<br/>own answer excluded,<br/>FINAL RANKING"]
     S2 --> S3["Stage 3: Chairman synthesis<br/>answers + rankings +<br/>agreements and disagreements"]
     S3 --> F["final-answer.md"]
@@ -28,7 +28,7 @@ Why it works:
 | | Property | Why it matters |
 |--|---------|----------------|
 | 🧭 | Independence | Stage 1 councilors never see each other's answers, so answers are genuinely independent |
-| 🎭 | Anonymization | Reviewers see only `Response A/B/C`, so rankings judge content, not brand |
+| 🎭 | Anonymization | Reviewers see only `Response A/B/C/D`, so rankings judge content, not brand |
 | 🚫 | Self-exclusion | A councilor never reviews its own answer, removing self-serving bias |
 | ⚖️ | Chairman synthesis | One final answer weighs insights, rankings, and disagreement patterns instead of picking a winner |
 
@@ -74,7 +74,7 @@ Each run writes to `.council/<slug>/` in the current project (gitignored):
 
 ## Degradation
 
-Failed backends are dropped and logged. Two survivors still run the full flow. One survivor skips peer review; the chairman critically reviews the single answer before synthesizing. Zero survivors aborts with the backend errors.
+Failed backends (missing CLI, quota or auth error, empty reply) are dropped and logged. Two survivors still run the full flow. One survivor skips peer review; the chairman critically reviews the single answer before synthesizing. Zero survivors aborts with the backend errors.
 
 ## Contributing
 
