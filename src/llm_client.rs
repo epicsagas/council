@@ -61,12 +61,14 @@ fn reserve_budget(estimated_tokens: u32, generation_cap: u32) -> Result<u32> {
 }
 
 /// Return `reserved - actual_total` to the budget. No-op without a budget.
+/// Actual usage is clamped to the reservation: a provider reporting more
+/// prompt tokens than our estimate must not overdraw the budget on settle.
 fn settle_budget(reserved: u32, actual_total: u32) {
     if reserved == 0 {
         return;
     }
     if let Some(Some(budget)) = BUDGET.get() {
-        let refund = reserved.saturating_sub(actual_total);
+        let refund = reserved.saturating_sub(actual_total.min(reserved));
         if refund > 0 {
             budget.release(refund);
         }
